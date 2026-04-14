@@ -1,36 +1,28 @@
 #!/usr/bin/env python3
 import socket
 
-# Simple test client that connects to the proxy
-proxy_host = 'localhost'
-proxy_port = 8000
+PROXY_HOST = 'localhost'
+PROXY_PORT = 8000
+BUFFER_SIZE = 4096
 
-# Create a GET request
 request = "GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"
 
 try:
-    # Connect to proxy
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect((proxy_host, proxy_port))
-    print(f"Connected to proxy at {proxy_host}:{proxy_port}")
-
-    # Send request
+    client.connect((PROXY_HOST, PROXY_PORT))
+    print(f"Connected to proxy at {PROXY_HOST}:{PROXY_PORT}")
     client.send(request.encode())
     print(f"Sent request:\n{request}")
-
-    # Receive response
-    response = b""
+    chunks = []
     while True:
-        chunk = client.recv(4096)
+        chunk = client.recv(BUFFER_SIZE)
         if not chunk:
             break
-        response += chunk
-
+        chunks.append(chunk)
+    response = b"".join(chunks)
     print(f"\nReceived response ({len(response)} bytes):")
     print(response.decode('utf-8', errors='ignore')[:500])
-
     client.close()
-
 except Exception as e:
     print(f"Error: {e}")
     import traceback

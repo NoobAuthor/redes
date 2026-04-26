@@ -1,0 +1,2 @@
+Este es un mensaje de prueba que tiene mas de 16 bytes para verificar que el sistema de chunks funciona correctamente.
+Stop & Wait protocol implementation test.

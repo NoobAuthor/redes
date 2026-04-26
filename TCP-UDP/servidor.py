@@ -30,9 +30,12 @@ def main():
     full_message = b""
     while True:
         data = connection.recv(RECV_BUFFER)
-        if not data or connection.remaining_length == 0:
+        if not data:
             break
         full_message += data
+        # Si ya recibimos todo el mensaje, salir
+        if connection.remaining_length == 0 and not connection.remaining_buffer:
+            break
 
     # Imprimir mensaje recibido a stdout
     sys.stdout.buffer.write(full_message)

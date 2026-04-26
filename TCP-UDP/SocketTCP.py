@@ -161,15 +161,8 @@ class SocketTCP:
         Retorna hasta buff_size bytes. Si el mensaje es mas largo, se puede llamar
         multiples veces para recibir el resto.
         """
-        # Si hay datos en el buffer, servirlos primero
-        if self.remaining_buffer:
-            data_to_return = self.remaining_buffer[:buff_size]
-            self.remaining_buffer = self.remaining_buffer[buff_size:]
-            self.remaining_length -= len(data_to_return)
-            return data_to_return
-
         # Si no hay mensaje pendiente, recibir el largo del mensaje
-        if self.remaining_length == 0:
+        if self.remaining_length == 0 and not self.remaining_buffer:
             self.udp_socket.settimeout(None)  # Blocking
             data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
             parsed = self.parse_segment(data)
@@ -181,11 +174,17 @@ class SocketTCP:
             self.remaining_length = int(parsed["data"])
             self.peer_seq = parsed["seq"] + len(parsed["data"])
 
-        # Recibir segmentos de datos
-        bytes_to_receive = min(self.remaining_length, buff_size)
+        # Comenzar con datos del buffer si los hay
         received_data = b""
+        if self.remaining_buffer and self.remaining_buffer != b"FIN_RECEIVED":
+            received_data = self.remaining_buffer
+            self.remaining_buffer = b""
 
-        while len(received_data) < bytes_to_receive:
+        # Calcular cuantos bytes mas necesitamos
+        bytes_to_receive = min(self.remaining_length, buff_size)
+
+        # Continuar recibiendo hasta tener suficientes datos
+        while len(received_data) < bytes_to_receive and self.remaining_length > 0:
             data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
             parsed = self.parse_segment(data)
 
@@ -193,7 +192,8 @@ class SocketTCP:
             if parsed["fin"] == 1:
                 # Guardar para recv_close
                 self.remaining_buffer = b"FIN_RECEIVED"
-                break
+                self.remaining_length = 0
+                return received_data
 
             # Decodificar datos usando latin-1 para preservar bytes
             chunk_data = parsed["data"].encode('latin-1')
@@ -205,14 +205,15 @@ class SocketTCP:
 
             self.peer_seq = parsed["seq"] + len(chunk_data)
 
+            # Actualizar remaining_length despues de cada chunk
+            self.remaining_length -= len(chunk_data)
+
         # Si recibimos mas de lo necesario, guardar en buffer
         if len(received_data) > buff_size:
             data_to_return = received_data[:buff_size]
             self.remaining_buffer = received_data[buff_size:]
         else:
             data_to_return = received_data
-
-        self.remaining_length -= len(received_data)
 
         return data_to_return
 
@@ -255,17 +256,13 @@ class SocketTCP:
         Lado que responde al cierre de conexion (Host B).
         Maneja la recepcion de FIN y completa el cierre.
         """
-        # Paso 1: Esperar FIN (puede ya haberse detectado en recv)
-        if self.remaining_buffer != b"FIN_RECEIVED":
-            self.udp_socket.settimeout(None)
-            data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
-            parsed = self.parse_segment(data)
-        else:
-            # FIN ya fue recibido en recv, necesitamos recibirlo de nuevo
-            # o ya tenemos la info necesaria
-            self.udp_socket.settimeout(None)
-            data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
-            parsed = self.parse_segment(data)
+        # Paso 1: Esperar FIN
+        self.udp_socket.settimeout(None)
+
+        # Si ya detectamos FIN en recv, solo esperamos que llegue de nuevo
+        # (el cliente lo reenviara si no recibe FIN+ACK)
+        data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
+        parsed = self.parse_segment(data)
 
         if parsed["fin"] != 1:
             raise ValueError("Se esperaba un segmento FIN")

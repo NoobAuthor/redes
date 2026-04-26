@@ -89,23 +89,18 @@ ack_seq = received_seq + 1
 
 ### 2.1 Diagrama del 3-Way Handshake
 
-```
-Cliente                                      Servidor
-   |                                            |
-   |  SYN (seq=42)                              |
-   |----------------------------------------->  | 
-   |                                            | accept() crea nuevo socket
-   |                                            | en puerto aleatorio (ej: 8001)
-   |                                            |
-   |         SYN+ACK (seq=78, ack_seq=43)       |
-   |  <-----------------------------------------|
-   | (cliente actualiza dest_address al        |
-   |  nuevo puerto 8001)                       |
-   |                                            |
-   |  ACK (seq=43, ack_seq=79)                 |
-   |----------------------------------------->  |
-   |                                            |
-   | Conexión establecida                       |
+```mermaid
+sequenceDiagram
+    participant Cliente
+    participant Servidor
+    
+    Note over Cliente: connect()
+    Cliente->>Servidor: SYN (seq=42)
+    Note over Servidor: accept() crea nuevo socket<br/>en puerto aleatorio (ej: 8001)
+    Servidor->>Cliente: SYN+ACK (seq=78, ack_seq=43)
+    Note over Cliente: Actualiza dest_address<br/>al nuevo puerto 8001
+    Cliente->>Servidor: ACK (seq=43, ack_seq=79)
+    Note over Cliente,Servidor: Conexión establecida
 ```
 
 ### 2.2 Asociación con Funciones
@@ -132,28 +127,20 @@ Cliente                                      Servidor
 
 **Diagrama:**
 
-```
-Cliente                                      Servidor
-   |                                            |
-   |  SYN (seq=42)                              |
-   |----------------------------------------->  |
-   |                                            |
-   |  SYN+ACK (seq=78, ack=43)                 |
-   |  <-----------------------------------------|
-   |                                            |
-   |  ACK (seq=43, ack=79)         X (perdido) |
-   |----------------------------------------->  |
-   |                                            | (timeout esperando ACK)
-   | Cliente ya está en send()                 |
-   |                                            |
-   |  SYN+ACK (seq=78, ack=43) [retransmisión] |
-   |  <-----------------------------------------|
-   |                                            |
-   | Cliente detecta SYN+ACK en _send_and_wait_ack()
-   |  ACK (seq=43, ack=79) [reenvío]          |
-   |----------------------------------------->  |
-   |                                            |
-   | Continúa enviando datos normalmente        |
+```mermaid
+sequenceDiagram
+    participant Cliente
+    participant Servidor
+    
+    Cliente->>Servidor: SYN (seq=42)
+    Servidor->>Cliente: SYN+ACK (seq=78, ack=43)
+    Cliente-xServidor: ACK (seq=43, ack=79) ❌ PERDIDO
+    Note over Servidor: Timeout esperando ACK
+    Note over Cliente: Cliente ya está en send()
+    Servidor->>Cliente: SYN+ACK (seq=78, ack=43) [retransmisión]
+    Note over Cliente: Detecta SYN+ACK en<br/>_send_and_wait_ack()
+    Cliente->>Servidor: ACK (seq=43, ack=79) [reenvío]
+    Note over Cliente,Servidor: Continúa enviando datos normalmente
 ```
 
 **Solución implementada:**
@@ -294,29 +281,23 @@ def _send_and_wait_ack(self, segment, expected_ack_seq):
 
 ### 4.1 Diagrama del 4-Way Close
 
-```
-Host A (close)                            Host B (recv_close)
-    |                                            |
-    |  FIN (seq=200)                             |
-    |----------------------------------------->  |
-    |                                            | (timeout esperando FIN)
-    |  FIN (seq=200) [retransmisión]            |
-    |----------------------------------------->  |
-    |                                            |
-    |         FIN+ACK (seq=201)                  |
-    |  <-----------------------------------------|
-    |                                            | (timeout esperando ACK)
-    |         FIN+ACK (seq=201) [retransmisión] |
-    |  <-----------------------------------------|
-    |                                            |
-    |  ACK (seq=202)                             |
-    |----------------------------------------->  |
-    |  ACK (seq=202) [2do envío]                |
-    |----------------------------------------->  |
-    |  ACK (seq=202) [3er envío]                |
-    |----------------------------------------->  |
-    |                                            |
-    | close socket                              | close socket
+```mermaid
+sequenceDiagram
+    participant Host A (close)
+    participant Host B (recv_close)
+    
+    Note over Host A (close): Inicia cierre
+    Host A (close)->>Host B (recv_close): FIN (seq=200)
+    Note over Host B (recv_close): Timeout esperando FIN
+    Host A (close)->>Host B (recv_close): FIN (seq=200) [retransmisión]
+    Host B (recv_close)->>Host A (close): FIN+ACK (seq=201)
+    Note over Host A (close): Timeout esperando ACK
+    Host B (recv_close)->>Host A (close): FIN+ACK (seq=201) [retransmisión]
+    Host A (close)->>Host B (recv_close): ACK (seq=202)
+    Host A (close)->>Host B (recv_close): ACK (seq=202) [2do envío]
+    Host A (close)->>Host B (recv_close): ACK (seq=202) [3er envío]
+    Note over Host A (close): close socket
+    Note over Host B (recv_close): close socket
 ```
 
 ### 4.2 Implementación de `close()` (Host A)
